@@ -1,15 +1,16 @@
 
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
-# Transactions
-# Budgets
+from enum import Enum
 
-
+class types(str, Enum):
+    Income = "Income"
+    Expense = "Expense"
 
 class TransBase(BaseModel):
     amount : int
     category_id : int
-    type : str
+    type : types
     description : str
 
 class TransCreate(TransBase):
@@ -18,7 +19,7 @@ class TransCreate(TransBase):
 class TransUpdate(BaseModel):
     amount : int | None = None
     category_id : int | None = None
-    type : str | None = None 
+    type : types | None = None 
     description : str | None = None
 
 class TransResponse(TransBase):

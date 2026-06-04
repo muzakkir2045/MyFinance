@@ -1,7 +1,10 @@
 import models
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Request
 from schemas import TransCreate, TransResponse, TransUpdate, BudgetCreate, BudgetResponse, BudgetUpdate
 from sqlalchemy import select
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy.orm import Session
 from database import Base, engine, get_db
 from typing import Annotated
@@ -194,6 +197,16 @@ def get_budget(budget_id: int, db: Annotated[Session, Depends(get_db)]):
 @app.post("/budgets", response_model=BudgetResponse, status_code=status.HTTP_201_CREATED)
 def add_budget(budget:BudgetCreate, db: Annotated[Session, Depends(get_db)]):
 
+    result = db.execute(
+        select(models.Categories.type).where(models.Categories.id == budget.category_id)
+    )
+    cat = result.scalars().first()
+    if cat == "Income":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Budgets can only be created for expense categories."
+        )
+
     new_budget = models.Budgets(
         category_id = budget.category_id,
         amount = budget.amount
@@ -268,4 +281,42 @@ def remove_budget(budget_id:int, db:Annotated[Session, Depends(get_db)]):
     
     db.delete(budget)
     db.commit()
+
+
+@app.get("/summary")
+def monthly_summary(db: Annotated[Session, Depends(get_db)]):
+
+    result = db.execute(
+        select(models.Transactions.amount).where(models.Transactions.category_id == 1)
+    )
+    total = sum(result.scalars().all())
+
+    return {
+        "Total" : total
+    }
+
+
+
+@app.exception_handler(StarletteHTTPException)
+def general_http_exception_handler(request: Request, exception: StarletteHTTPException):
+    message = (
+        exception.detail
+        if exception.detail
+        else "An error occurred. Please check your request and try again."
+    )
+
+    return JSONResponse(
+        status_code=exception.status_code,
+        content={"detail": message},
+    )
+
+
+
+@app.exception_handler(RequestValidationError)
+def validation_exception_handler(request: Request, exception: RequestValidationError):
+
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content={"detail": exception.errors()},
+    )
 
