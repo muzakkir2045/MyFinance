@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+
+
 from database import Base
 
 # 3 models -> Transactions, Budgets, Categories
@@ -12,11 +14,24 @@ class types(str, Enum):
     Income = "Income"
     Expense = "Expense"
 
+class User(Base):
+    __tablename__ = "user"
+
+    id : Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    email : Mapped[str] = mapped_column(String(255), nullable=False)
+    username : Mapped[str] = mapped_column(String(255), nullable=False)
+    date : Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC)
+    )
+
+
 
 class Transactions(Base):
     __tablename__ = "transactions"
 
     id : Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id : Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False, index=True)
     amount : Mapped[int] = mapped_column(Integer, nullable=False)
     category_id : Mapped[int] = mapped_column(
         ForeignKey("categories.id"),
@@ -38,6 +53,8 @@ class Budgets(Base):
     __tablename__ = "budgets"
 
     id : Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id : Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False, index=True)
+
     category_id : Mapped[int] = mapped_column(
         ForeignKey("categories.id"),
         nullable=False,
@@ -56,6 +73,7 @@ class Categories(Base):
     __tablename__ = "categories"
 
     id : Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id : Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False, index=True)
     category : Mapped[str] = mapped_column(String, nullable=False)
     type : Mapped [str] = mapped_column(String, nullable=False)
 

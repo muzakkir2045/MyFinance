@@ -1,11 +1,24 @@
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr
 from datetime import datetime
 from enum import Enum
 
 class types(str, Enum):
     Income = "Income"
     Expense = "Expense"
+
+class UserBase(BaseModel):
+    email : EmailStr
+    username : str
+
+class UserCreate(UserBase):
+    pass 
+
+class UserResponse(UserBase):
+    model_config = ConfigDict(from_attributes=True)
+    id : int
+    date : datetime
+    
 
 class TransBase(BaseModel):
     amount : int

@@ -1,5 +1,6 @@
 import models
 from fastapi import FastAPI, HTTPException, Depends, status, Request
+from schemas import UserCreate, UserResponse
 from schemas import TransCreate, TransResponse, TransUpdate, BudgetCreate, BudgetResponse, BudgetUpdate
 from sqlalchemy import select
 from fastapi.exceptions import RequestValidationError
@@ -32,6 +33,43 @@ def home(db: Annotated[Session, Depends(get_db)]):
         "Budgets" : budgets
     }
 
+
+@app.post("/users",response_model=UserResponse,
+        status_code=status.HTTP_201_CREATED)
+def create_user(user: UserCreate, db: Annotated[Session, Depends(get_db)]):
+    result = db.execute(
+        select(models.User).where(models.User.username == user.username)
+    )
+
+    username = result.scalars().first()
+    if username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="username already exists"
+        )
+
+    result = db.execute(
+        select(models.User).where(models.User.email == user.email)
+    )
+    
+    email = result.scalars().first()
+    if email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already exists"
+        )
+    
+
+    new_user = models.User(
+        email = user.email,
+        username = user.username
+    )
+
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    return new_user
 
 
 # Transaction Endpoints
