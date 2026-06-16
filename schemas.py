@@ -64,3 +64,27 @@ class BudgetResponse(BudgetBase):
     id : int
     user_id : int
     month : datetime
+
+
+class CategoryBase(BaseModel):
+    category : str
+    type : str
+
+class CategoryCreate(CategoryBase):
+    user_id: int # TEMPORARY
+    pass 
+
+class CategoryResponse(CategoryBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id : int
+    user_id : int
+
+class Summary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    category : str # categories
+    budget : float # budgets
+    total_spent : float # transactions
+    remaining : float # budget - (sum of transactions)
+
+

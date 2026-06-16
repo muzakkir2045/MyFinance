@@ -1,8 +1,8 @@
 import models
 from fastapi import FastAPI, HTTPException, Depends, status, Request
-from schemas import UserCreate, UserResponse
+from schemas import UserCreate, UserResponse, Summary
 from schemas import TransCreate, TransResponse, TransUpdate, BudgetCreate, BudgetResponse, BudgetUpdate
-from sqlalchemy import select
+from sqlalchemy import select, insert, func, and_
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -36,7 +36,6 @@ def home(db: Annotated[Session, Depends(get_db)]):
 
 
 
-
 @app.post("/users",response_model=UserResponse,
         status_code=status.HTTP_201_CREATED)
 def create_user(user: UserCreate, db: Annotated[Session, Depends(get_db)]):
@@ -66,9 +65,21 @@ def create_user(user: UserCreate, db: Annotated[Session, Depends(get_db)]):
         username = user.username
     )
 
+
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    
+    db.execute(
+        insert(models.Categories),[
+            {"user_id" : new_user.id , "category" : "Salary", "type" : "Income"},
+            {"user_id" : new_user.id , "category" : "Rent", "type" : "Expense"},
+            {"user_id" : new_user.id , "category" : "Groceries", "type" : "Expense"},
+            {"user_id" : new_user.id , "category" : "Freelancing", "type" : "Income"}
+        ]
+    )
+    db.commit()
+
 
     return new_user
 
@@ -213,7 +224,18 @@ def add_transaction(transaction: TransCreate, db: Annotated[Session, Depends(get
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
-        )       
+        )   
+
+    result = db.execute(
+        select(models.Categories).where(models.Categories.id == transaction.category_id)
+    )    
+    category = result.scalars().first()
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category id not found, Please enter a valid category Id"
+        )   
+
 
     new_transaction = models.Transactions(
         user_id = transaction.user_id,
@@ -243,6 +265,16 @@ def update_transaction_full(trans_id : int, trans_data : TransCreate, db: Annota
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Transaction not found"
         )
+    
+    result = db.execute(
+        select(models.Categories).where(models.Categories.id == transaction.category_id)
+    )    
+    category = result.scalars().first()
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category id not found, Please enter a valid category Id"
+        ) 
     
     transaction.amount = trans_data.amount
     transaction.category_id = trans_data.category_id
@@ -300,7 +332,7 @@ def delete_transaction(trans_id:int , db: Annotated[Session, Depends(get_db)]):
 
 
 # Budget Endpoints
-@app.get("/budgets")
+@app.get("/budgets", response_model=BudgetResponse)
 def get_budgets(db: Annotated[Session, Depends(get_db)]):
     result = db.execute(
         select(models.Budgets)
@@ -310,7 +342,7 @@ def get_budgets(db: Annotated[Session, Depends(get_db)]):
     return budgets
 
 
-@app.get("/budgets/{budget_id}")
+@app.get("/budgets/{budget_id}", response_model=BudgetResponse)
 def get_budget(budget_id: int, db: Annotated[Session, Depends(get_db)]):
     result = db.execute(
         select(models.Budgets).where(models.Budgets.id == budget_id)
@@ -427,18 +459,56 @@ def remove_budget(budget_id:int, db:Annotated[Session, Depends(get_db)]):
     db.commit()
 
 
-@app.get("/summary")
-def monthly_summary(db: Annotated[Session, Depends(get_db)]):
+@app.get("/summary/{user_id}")
+def monthly_summary(user_id:int ,db: Annotated[Session, Depends(get_db)]):
+    result = db.execute(
+        select(models.User).where(models.User.id == user_id)
+    )
+    user = result.scalars().first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    result = db.execute(
+        select(func.sum(models.Transactions.amount))
+        .select_from(models.Transactions)
+        .where(models.Transactions.user_id == user_id , models.Transactions.type == "Income")
+    ).scalar()
+    total_income = result
 
     result = db.execute(
-        select(models.Transactions.amount).where(models.Transactions.category_id == 1)
+        select(func.sum(models.Budgets.amount))
+        .select_from(models.Budgets)
+        .where(models.Budgets.user_id == user_id)
+    ).scalar()
+    total_budget = result
+
+
+
+    st = db.execute(
+        select(
+            models.Categories.category,
+            (models.Budgets.amount).label("budget"),
+            func.sum(models.Transactions.amount).label("total_spent"),
+            (models.Budgets.amount - func.sum(models.Transactions.amount)).label("remaining")
+        )
+        .select_from(models.Categories)
+        .join(models.Budgets, models.Categories.id == models.Budgets.category_id, isouter=True)
+        .join(models.Transactions, and_(models.Categories.id == models.Transactions.category_id, models.Categories.type == "Expense"), isouter=True)
+        .where(models.Transactions.user_id == user_id)
+        .group_by(models.Categories.category, models.Budgets.amount)
     )
-    total = sum(result.scalars().all())
 
+    result = st.mappings().all()
     return {
-        "Total" : total
+        "summary" : result,
+        "total_income" : total_income,
+        "total_budget" : total_budget,
+        "total_remaining" : (total_income - total_budget)
     }
-
 
 
 @app.exception_handler(StarletteHTTPException)

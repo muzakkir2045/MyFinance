@@ -29,6 +29,6 @@ Resume line
 
 Categories : 
 1 : Salary
-2 : Groceries
-3 : Rent
+2 : Rent
+3 : Groceries
 4 : Freelancing
