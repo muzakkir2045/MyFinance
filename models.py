@@ -89,6 +89,7 @@ class Budgets(Base):
         default=lambda: datetime.now(UTC)
     )
 
+    user: Mapped["User"] = relationship(back_populates="budgets")
     category : Mapped["Categories"] = relationship(
         back_populates="budgets")
 
