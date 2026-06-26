@@ -2,17 +2,23 @@
 import models
 from typing import Annotated
 from schemas import UserResponse, UserCreate, UserUpdate, TransResponse, BudgetResponse
+from schemas import Token
 from fastapi import status, Depends, HTTPException, APIRouter
-from sqlalchemy import select, insert
+from sqlalchemy import select, insert, func
 from sqlalchemy.orm import joinedload
 from database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import timedelta
+from fastapi.security import OAuth2PasswordRequestForm
+from auth import create_access_token, hash_password, verify_password, CurrentUser
+
+from config import settings
 
 router = APIRouter()
 
 
 @router.post(
-        "",
+        "/register",
         response_model=UserResponse,
         status_code=status.HTTP_201_CREATED)
 async def create_user(user: UserCreate, db: Annotated[AsyncSession, Depends(get_db)]):
@@ -38,8 +44,9 @@ async def create_user(user: UserCreate, db: Annotated[AsyncSession, Depends(get_
         )
 
     new_user = models.User(
-        email = user.email,
-        username = user.username
+        username = user.username,
+        email = user.email.lower(),
+        password_hash = hash_password(user.password)
     )
 
 
@@ -56,89 +63,130 @@ async def create_user(user: UserCreate, db: Annotated[AsyncSession, Depends(get_
         ]
     )
     await db.commit()
-
-
     return new_user
 
 
-
-@router.get("/{user_id}",response_model=UserResponse)
-async def get_user(user_id:int ,db: Annotated[AsyncSession, Depends(get_db)]):
-
-    result = await db.execute(
-        select(models.User).where(models.User.id == user_id)
-    )
-
-    user = result.scalars().first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-
-    return user
-
-
-@router.get("/{user_id}/transactions",response_model=list[TransResponse])
-async def get_user_transactions(user_id:int ,db: Annotated[AsyncSession, Depends(get_db)]):
-    result = await db.execute(
-        select(models.User)
-        .where(models.User.id == user_id)
-    )
-
-    user = result.scalars().first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+@router.post("/token", response_model=Token)
+async def login_for_access_token(
+    form_data : Annotated[OAuth2PasswordRequestForm, Depends()],
+    db:Annotated[AsyncSession, Depends(get_db)]
+):
     
     result = await db.execute(
-        select(models.Transactions)
-        .where(models.Transactions.user_id == user_id)
-        .options(joinedload(models.Transactions.category))
+        select(models.User).where(
+            func.lower(models.User.email) == form_data.username.lower()
+        )
     )
-
-    transactions = result.scalars().all()
-    return transactions
-
-
-
-@router.get("/{user_id}/budgets",response_model=list[BudgetResponse])
-async def get_user_budgets(user_id:int ,db: Annotated[AsyncSession, Depends(get_db)]):
-
-    result = await db.execute(
-        select(models.User).where(models.User.id == user_id)
-    )
-
     user = result.scalars().first()
-    if not user:
+
+
+    if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"}
         )
     
-    result = await db.execute(
-        select(models.Budgets)
-        .where(models.Budgets.user_id == user_id)
-        .options(joinedload(models.Budgets.category))
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = create_access_token(
+        data={"sub" : str(user.id)},
+        expires_delta=access_token_expires
     )
-    budgets = result.scalars().all()
-    return budgets
+    return Token(access_token = access_token, token_type="bearer")
 
 
-@router.patch("/update/{user_id}",response_model=UserResponse)
-async def update_user(user_id: int , user_update: UserUpdate, db: Annotated[AsyncSession, Depends(get_db)]):
-    result = await db.execute(
-        select(models.User).where(models.User.id == user_id)
-    )
-    user = result.scalars().first()
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+@router.get("/me", response_model=UserResponse)
+async def get_current_user(current_user : CurrentUser):
+    return current_user
+
+
+
+# @router.get("/{user_id}",response_model=UserResponse)
+# async def get_user(user_id:int ,db: Annotated[AsyncSession, Depends(get_db)]):
+
+#     result = await db.execute(
+#         select(models.User).where(models.User.id == user_id)
+#     )
+
+#     user = result.scalars().first()
+#     if not user:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail="User not found"
+#         )
+
+#     return user
+
+
+# @router.get("/{user_id}/transactions",response_model=list[TransResponse])
+# async def get_user_transactions(user_id:int ,db: Annotated[AsyncSession, Depends(get_db)]):
+#     result = await db.execute(
+#         select(models.User)
+#         .where(models.User.id == user_id)
+#     )
+
+#     user = result.scalars().first()
+#     if not user:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail="User not found"
+#         )
+    
+#     result = await db.execute(
+#         select(models.Transactions)
+#         .where(models.Transactions.user_id == user_id)
+#         .options(joinedload(models.Transactions.category))
+#     )
+
+#     transactions = result.scalars().all()
+#     return transactions
+
+
+
+# @router.get("/{user_id}/budgets",response_model=list[BudgetResponse])
+# async def get_user_budgets(user_id:int ,db: Annotated[AsyncSession, Depends(get_db)]):
+
+#     result = await db.execute(
+#         select(models.User).where(models.User.id == user_id)
+#     )
+
+#     user = result.scalars().first()
+#     if not user:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail="User not found"
+#         )
+    
+#     result = await db.execute(
+#         select(models.Budgets)
+#         .where(models.Budgets.user_id == user_id)
+#         .options(joinedload(models.Budgets.category))
+#     )
+#     budgets = result.scalars().all()
+#     return budgets
+
+
+@router.patch("/update",response_model=UserResponse)
+async def update_user(
+    # user_id: int ,
+    current_user : CurrentUser,
+    user_update: UserUpdate, 
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    
+
+    # result = await db.execute(
+    #     select(models.User).where(models.User.id == user_id)
+    # )
+    # user = result.scalars().first()
+
+    # if not user:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_404_NOT_FOUND,
+    #         detail="User not found"
+    #     )
+    user = current_user
     
     if user_update.username is not None and user_update.username != user.username:
         result = await db.execute(
@@ -183,14 +231,16 @@ async def update_user(user_id: int , user_update: UserUpdate, db: Annotated[Asyn
     await db.refresh(user)
     return user
 
-# delete user
-@router.delete("/delete/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(user_id: int, db:Annotated[AsyncSession, Depends(get_db)]):
-    result = await db.execute(
-        select(models.User).where(models.User.id == user_id)
-    )
 
-    user = result.scalars().first()
+
+# delete user
+@router.delete("/delete", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(current_user : CurrentUser, db:Annotated[AsyncSession, Depends(get_db)]):
+    # result = await db.execute(
+    #     select(models.User).where(models.User.id == user_id)
+    # )
+
+    user = current_user
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

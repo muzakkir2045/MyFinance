@@ -34,7 +34,6 @@ class TransBase(BaseModel):
     description : str
 
 class TransCreate(TransBase):
-    user_id: int # TEMPORARY
     pass 
 
 class TransUpdate(BaseModel):
@@ -55,7 +54,6 @@ class BudgetBase(BaseModel):
     amount : int
 
 class BudgetCreate(BudgetBase):
-    user_id: int # TEMPORARY
     pass 
 
 class BudgetUpdate(BaseModel):
@@ -75,7 +73,6 @@ class CategoryBase(BaseModel):
     type : str
 
 class CategoryCreate(CategoryBase):
-    user_id: int # TEMPORARY
     pass 
 
 class CategoryResponse(CategoryBase):

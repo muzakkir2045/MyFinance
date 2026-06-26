@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload, joinedload
 from database import Base, engine, get_db
 from typing import Annotated
 from routers import users, transactions, budgets, categories
+from auth import CurrentUser
 
 
 @asynccontextmanager
@@ -33,14 +34,14 @@ app.include_router(budgets.router, prefix = "/api/budgets", tags=["budgets"])
 
 # CRUD for both transactions and budgets
 @app.get("/")
-async def home(db: Annotated[AsyncSession, Depends(get_db)]):
+async def home(current_user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]):
     result = await db.execute(
-        select(models.Transactions)
+        select(models.Transactions).where(models.Transactions.user_id == current_user.id)
     )
     transactions = result.scalars().all()
 
     result = await db.execute(
-        select(models.Budgets)
+        select(models.Budgets).where(models.Budgets.user_id == current_user.id)
     )
     budgets = result.scalars().all()
 
@@ -51,35 +52,29 @@ async def home(db: Annotated[AsyncSession, Depends(get_db)]):
 
 
 
-
-
-@app.get("/summary/{user_id}")
-async def monthly_summary(user_id:int ,db: Annotated[AsyncSession, Depends(get_db)]):
-    result = await db.execute(
-        select(models.User).where(models.User.id == user_id)
-    )
-    user = result.scalars().first()
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+@app.get("/summary")
+async def monthly_summary(current_user: CurrentUser ,db: Annotated[AsyncSession, Depends(get_db)]):
+    user_id = current_user.id
     
     result = await db.execute(
         select(func.sum(models.Transactions.amount))
         .select_from(models.Transactions)
         .where(models.Transactions.user_id == user_id , models.Transactions.type == "Income")
-    ).scalar()
-    total_income = result
+    )
+
+    total_income = result.scalar()
+    if not total_income:
+        total_income = 0
+
 
     result = await db.execute(
         select(func.sum(models.Budgets.amount))
         .select_from(models.Budgets)
         .where(models.Budgets.user_id == user_id)
-    ).scalar()
-    total_budget = result
-
+    )
+    total_budget = result.scalar()
+    if not total_budget:
+        total_budget = 0
 
 
     st = await db.execute(
@@ -113,6 +108,5 @@ async def general_http_exception_handler(request: Request, exception: StarletteH
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exception: RequestValidationError):
-
     return await request_validation_exception_handler(request, exception)
 
