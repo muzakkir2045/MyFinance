@@ -25,11 +25,11 @@ async def get_budgets(current_user: CurrentUser, db: Annotated[AsyncSession, Dep
 
 @router.get("/{budget_id}", response_model=BudgetResponse)
 async def get_budget(budget_id: int, current_user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]):
-    result = db.execute(
+    result = await db.execute(
         select(models.Budgets).where(models.Budgets.id == budget_id, models.Budgets.user_id == current_user.id)
     )
 
-    budget = result.scalars().all()
+    budget = result.scalars().first()
 
     if not budget:
         raise HTTPException(
@@ -119,7 +119,7 @@ async def remove_budget(budget_id:int, current_user: CurrentUser, db:Annotated[A
         select(models.Budgets).where(models.Budgets.id == budget_id, models.Budgets.user_id == current_user.id)
     )
 
-    budget = result.scalars().all()
+    budget = result.scalars().first()
 
     if not budget:
         raise HTTPException(

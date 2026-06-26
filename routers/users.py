@@ -101,72 +101,6 @@ async def get_current_user(current_user : CurrentUser):
     return current_user
 
 
-
-# @router.get("/{user_id}",response_model=UserResponse)
-# async def get_user(user_id:int ,db: Annotated[AsyncSession, Depends(get_db)]):
-
-#     result = await db.execute(
-#         select(models.User).where(models.User.id == user_id)
-#     )
-
-#     user = result.scalars().first()
-#     if not user:
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail="User not found"
-#         )
-
-#     return user
-
-
-# @router.get("/{user_id}/transactions",response_model=list[TransResponse])
-# async def get_user_transactions(user_id:int ,db: Annotated[AsyncSession, Depends(get_db)]):
-#     result = await db.execute(
-#         select(models.User)
-#         .where(models.User.id == user_id)
-#     )
-
-#     user = result.scalars().first()
-#     if not user:
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail="User not found"
-#         )
-    
-#     result = await db.execute(
-#         select(models.Transactions)
-#         .where(models.Transactions.user_id == user_id)
-#         .options(joinedload(models.Transactions.category))
-#     )
-
-#     transactions = result.scalars().all()
-#     return transactions
-
-
-
-# @router.get("/{user_id}/budgets",response_model=list[BudgetResponse])
-# async def get_user_budgets(user_id:int ,db: Annotated[AsyncSession, Depends(get_db)]):
-
-#     result = await db.execute(
-#         select(models.User).where(models.User.id == user_id)
-#     )
-
-#     user = result.scalars().first()
-#     if not user:
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail="User not found"
-#         )
-    
-#     result = await db.execute(
-#         select(models.Budgets)
-#         .where(models.Budgets.user_id == user_id)
-#         .options(joinedload(models.Budgets.category))
-#     )
-#     budgets = result.scalars().all()
-#     return budgets
-
-
 @router.patch("/update",response_model=UserResponse)
 async def update_user(
     # user_id: int ,
@@ -175,17 +109,6 @@ async def update_user(
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     
-
-    # result = await db.execute(
-    #     select(models.User).where(models.User.id == user_id)
-    # )
-    # user = result.scalars().first()
-
-    # if not user:
-    #     raise HTTPException(
-    #         status_code=status.HTTP_404_NOT_FOUND,
-    #         detail="User not found"
-    #     )
     user = current_user
     
     if user_update.username is not None and user_update.username != user.username:
@@ -201,7 +124,7 @@ async def update_user(
             )
         
     if user_update.email is not None and user_update.email != user.email:
-        result = db.execute(
+        result = await db.execute(
             select(models.User).where(models.User.email == user_update.email)
         )
 
@@ -236,9 +159,6 @@ async def update_user(
 # delete user
 @router.delete("/delete", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(current_user : CurrentUser, db:Annotated[AsyncSession, Depends(get_db)]):
-    # result = await db.execute(
-    #     select(models.User).where(models.User.id == user_id)
-    # )
 
     user = current_user
     if not user:
@@ -247,5 +167,5 @@ async def delete_user(current_user : CurrentUser, db:Annotated[AsyncSession, Dep
             detail="User not found"
         )
     
-    db.delete(user)
+    await db.delete(user)
     await db.commit()
